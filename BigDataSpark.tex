@@ -1,0 +1,319 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsfonts}
+\usepackage{listings}
+\usepackage{textcomp}
+\usepackage{float}
+\usepackage[T1]{fontenc}
+
+\title{Big Analysis con Spark.}
+\author{Julio Losada Rodríguez}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Introducción.}
+
+En esta práctica hemos probado tres algoritmos de preprocesamiento diferentes y cuatro clasificadores diferentes de \textit{Spark} (\href{https://spark.apache.org/}{https://spark.apache.org/}) para abordar un problema de Big Data. Dichas prácticas se han ejecutado, siempre que estaba operativo, en un clúster proporcionado por la universidad con \textit{216} núcleos y \textit{696.0 GB}. Cuando el clúster no ha estado operativo se ha hecho uso de mi propía máquina local, un ordenador portatil con 16gb y 6 nucleos, al cual le he tenido que crear una partición donde instalar el sistema operativo Linux Ubuntu y poder a su vez instalar y ejecutar Spark. 
+
+\section{Metodología de trabajo.}
+
+Para abordar la práctica, se ha utilizado el lenguaje Python integrado en Spark, conocido como Pyspar se ha usado la herramienta Google Coolab. Esta herramienta te permite crear cuadernos de python. Ha sido en estos cuadernos de Google Coolab donde he desarrollado el código y lo he probado ejecutado los conjuntos de datos reducidos hasta asegurarme de que los algoritmos no producían ningún error descontrolado. Una vez tenía un código completamente ejecutable, lo he subido al \textit{clúster} y ejecutado, guardando los resultados en un fichero de salida en formato de texto para poder revisarlos posteriormente. \\
+
+Para comparar los algoritmos de clasificación y ver el rendimiento de los algoritmos de preprocesamiento aplicados he usado el valor de la métrica \textit{TNR x TPR}. Es decir, el ratio de los verdaderos negativos multiplicado por el ratio de los verdaderos positivos.
+
+\section{Cojunto de datos.}
+
+El conjunto de datos con el que se ha trabajado es SUSY. En el conjunto de datos disponible en el clúster contamos con \textit{900000} instancias asociada a la clase \textit{0.0} y \textit{100000} instancias asociada a la clase \textit{1.0}, lo cual nos indica que nos enfrentamos a un problema bastante desbalanceado, con un ratio de desbalanceo \textit{IR = 9.0}.
+
+\subsection{Información del conjunto de datos.}
+
+Los datos de este conjunto se han generado utilizando simulaciones de Monte Carlo. Las primeras 8 características son propiedades cinéticas medidas por los detectores de partículas en el acelerador. Las últimas diez características son funciones de las primeras 8 características; estas son características de alto nivel derivadas por los físicos para ayudar a discriminar entre las dos clases. 
+
+\subsection{Información de atributos.}
+
+La última columna es la etiqueta de clase (1 para señal, 0 para fondo), las 18 columnas restantes son las características (8 características de bajo nivel y luego 10 características de alto nivel): lepton 1 pT, lepton 1 eta, lepton 1 phi, lepton 2 pT, leptón 2 eta, leptón 2 phi, magnitud de energía faltante, energía faltante phi, METrel, MET axial, MR, MTR2, R, MT2, SR, MDeltaR, dPhirb, cos(thetar1).
+
+\section{Preprocesamiento.}
+
+En esta sección se va a comentar los distintos algoritmos aplicados de preprocesamiento. Para corregir el desbalanceo se han implementado algoritmos dos algoritmos, \textit{RandomOversampling} y \textit{RandomUndersampling}. Las implementaciones propuestas se basan en las aportadas en la asignatura.
+Por otra parte se ha utilizado el algoritmo \textit{StandardScaler} para estandarizar los datos y el algoritmo PCA para selección de características, ambos obtenidos de la biblioteca \textit{MLlib} de Apache Spark .
+
+\subsection{RandomOversampling.}
+
+En el caso de \textit{RandomOversampling} se ha usado un ratio de 1.0, lo cual, como se ve en la siguiente sección, \textit{Balanceo del conjunto de datos}, obtiene un conjunto de datos balanceado prácticamente en su totalidad. Ya sea usado de manera individual o conbinado con otros algoritmos de preprocesamiento es el que mejor resultados obtiene.\\
+
+Uno de los beneficios de utilizar este algoritmo de preprocesamiento para el balanceo de datos es que, a diferencia de el algoritmo \textit{RandomUndersampling}, \textit{RandomOversampling} no pierde información, ya que obtiene un conjunto de datos balanceado añadiendo instancias artificiales a la clase minoritaria, por lo que no se reduce el total de datos.
+
+\subsection{RandomUndersampling.}
+
+Con el uso de este algoritmo se han obtenido dataset con un ratio de balanceo bastante bueno, pero a diferencia de \textit{RandomOversampling}, \textit{RandomUndersampling} logra el balanceo del  conjunto de datos eliminando de manera aleatoria instancias de la clase mayoritaria.\\
+
+El uso de \textit{RandomUndersampling} tiene el problema de que perdemos información del conjunto de datos ya que disminuye la cantidad de datos, pero al disminuir el conjunto de datos hace que la ejecución sea más liviana y rapida.
+
+
+\subsection{StandardScaler.}
+
+El uso de este algoritmo ha sido el de estandarizar el conjunto de datos para poder aplicar de manera más efectiva una selección de características. Como se ve más adelante, tambiénse ha conbinado con el resto de algoritmos de preprocesamiento con el fin de obtener mejores resultados.
+
+\subsection{PCA.}
+
+Con el uso de este algoritmo se han obtenido datasets con una menor cantidad de características. Este algoritmo hace un análisis de las componentes principales, es decir, estudia las características de nuestro conjunto de datos y las ordena de mejor a peor, siendo las mejores las que más influyen a la hora de clasificar y las peores las que menos papel juegan en la clasificación. Haciendo uso del parámetro \textit{k} se pueden seleccionar el número de las mejores compononentes o caracteristicas deseadas. En este caso se ha utilizado parámetro \textit{k = 5}, es decir que se han seleccionado las 5 mejores características, reduciendo en torno a un tercio el tamaño del conjunto de datos original, el cual cuenta con 18 características sin contar la clase.
+
+\section{Balanceo del conjunto de datos}
+
+Como hemos visto, balancear el conjunto de datos es algo imprescindible, ya que afecta bastante a los resultados obtenidos. Por eso, mi primera tarea para intentar combinar preprocesamientos es genera un conjunto de datos balanceado. Como hemos visto, \textit{RandomUndersampling} ya nos lo proprociona. El problema de \textit{RandomUndersampling} es que partimos de un conjunto en el que se han eliminado demasiadas instancias y sin ningún criterio, lo cual puede producir que hayamos perdido información relevante de nuestro problema. Es por ello también vamos a usar \textit{RandomOversampling} para generar un conjunto de datos balanceado y sin perdida de información. \\
+
+A parte de estudiar el balanceo del conjunto de datos utilizando unicamente los algoritmos \textit{RandomUndersampling} y \textit{RandomOversampling} también se ha estudiado como afecta la mezcla de diferentes algoritmos de preprocesamiento al valor del balanceo obtenido.\\
+
+A continuación, vamos a ver el número de instancias asociadas a cada clase tras aplicar los algoritmos de preprocesamiento:
+
+\begin{table}[H]
+	\centering
+		\resizebox{0.4\linewidth}{!}{%
+		\tabcolsep=2pt
+			\begin{tabular}{rrrr}
+			\multicolumn{1}{l}{} & \multicolumn{2}{c}{\textbf{Clase}} & \multicolumn{1}{l}{} \\
+			\textbf{Dataset} & \multicolumn{1}{c}{\textbf{0.0}} & \multicolumn{1}{c}{\textbf{1.0}} & \multicolumn{1}{c}{\textbf{IR}} \\ \hline
+			\textbf{Original} & 100000 & 900000 & 9,00000 \\
+			\textbf{RandomOversampling} & 899692 & 900000 & 1,0003 \\
+			\textbf{RandomUndersampling} & 100000 & 99787 & 0,99787 \\
+			\textbf{standardization + ROS} & 901531 & 900000 & 0,9983 \\
+			\textbf{standardization + RUS} & 100000 & 99857 & 0,99857 \\
+			\textbf{standardization + ROS + PCA} & 900301 & 900000 & 0,99966 \\
+			\textbf{standardization + RUS + PCA} & 100000 & 100814 & 1,00814 
+	\end{tabular}}
+\end{table}
+
+\section{Clasificadores.}
+
+En esta sección voy a comentar los clasificadores usados en esta práctica. Primero se han utilizado \textit{Decision Tree Classifier} y \textit{Random Forest Classifier}, ambos impuestos por el trabajo y disponibles en la biblioteca \textit{MLlib} de Apache Spark, por otra parte yo he selccionado otros dós algoritmos de clasificación, estos son, \textit{Multilayer Perceptron Classifier} también disponible en la biblioteca \textit{MLlib} de Apache Spark y \textit{lightGMC Classifier}, obtenido del repositorio SynapseML de Microsoft, disponible en  https://spark-packages.org/.\\
+
+Se ha intentado realizar una busqueda de los mejores hiperparámetros para todos los clasificadores mediante una busqueda en regilla pero no ha sido posible debido al excesivo tiempo que consumia esta busqueda.
+
+\subsection{Decision Tree Classifier.}
+
+Un árbol de decisión o Decision Tree es un algoritmo de aprendizaje supervisado no paramétrico, que se utiliza tanto para tareas de clasificación como de regresión, en nuestro caso se ha utilizado como clasificador. Tiene una estructura de árbol jerárquica, que consta de un nodo raíz, ramas, nodos internos y nodos hoja.\\
+
+El aprendizaje del árbol de decisiones emplea una estrategia de divide y vencerás mediante la realización de una búsqueda codiciosa para identificar los puntos de división óptimos dentro de un árbol. Este proceso de división se repite de forma recursiva de arriba hacia abajo hasta que todos o la mayoría de los registros se hayan clasificado bajo etiquetas de clase específicas.
+
+\subsection{Random Forest Classifier.}
+
+El segundo clasificador probado es un \textit{Random Forest}, disponible en la biblioteca \textit{mllib}.\\
+
+\textit{Random Forest} es un clasificador que contiene una serie de árboles de decisión en varios subconjuntos del conjunto de datos dado y toma el promedio para mejorar la precisión predictiva de ese conjunto de datos. En lugar de depender de un árbol de decisión, el bosque aleatorio toma la predicción de cada árbol y, en función de los votos mayoritarios de las predicciones, predice el resultado final. Un mayor número de árboles en el bosque conduce a una mayor precisión y evita el problema del sobreajuste.
+
+
+\subsection{Multilayer Perceptron Classifier .}
+
+Un \textit{Multilayer Perceptron} es un metodo de deep learning que consiste en una red neuronal artificial que genera un conjunto de salidas a partir de un conjunto de entradas. Un \textit{Multilayer Perceptron} se caracteriza por varias capas de nodos de entrada conectados como un grafo dirigido entre las capas de entrada y salida. \textit{Multilayer Perceptron} usa retropropagación para entrenar la red.
+
+
+
+\subsection{lightGBM Classifier.}
+
+\textit{LightGBM} es la abreviatura de Light Gradient Boosting Machine. \textit{lightGBM} es un marco de mejora de gradientes que utiliza algoritmos de aprendizaje basados en árboles. Está diseñado para ser distribuido y eficiente con las siguientes ventajas: Mayor velocidad de entrenamiento y mayor eficiencia, menor uso de memoria, mejor precisión, soporte de aprendizaje paralelo, distribuido y Capaz de manejar datos a gran escala. Estas carácterísticas lo hacen ideal para este trabajo que se realiza en un cluster donde tenemos gran cantidad de datos, los cuales están distribuidos. 
+
+\section{Experimentos.}
+
+En esta sección voy a detallar los experimentos realizados. Los parámetros usados en los experimentos han sido los indicados en las secciones anteriores si no se indica lo contrario.
+
+\subsection{Experimento 1: Sin preprocesamiento.}
+
+Lo primero que he hecho ha sido aplicar todos los clasificadores sin utilizar iun preprocesamiento, con el fin de ver el rendimiento de cada uno de los algoritmos con un conjunto de datos altamente desbalanceado como es SUSY. Los valores de la métrica \textit{TNR x TPR} obtenidos son los siguientes:
+
+
+\begin{table}[H]
+	\centering
+		\resizebox{0.4\linewidth}{!}{%
+		\tabcolsep=2pt
+			\begin{tabular}{rrrr}
+			\multicolumn{1}{l}{} & \multicolumn{2}{c}{\textbf{Sin preprocesamiento}} & \multicolumn{1}{l}{} \\
+			\textbf{Clasificador} & \multicolumn{1}{c}{\textbf{Test}} & \multicolumn{1}{c}{\textbf{Entrenamiento}} \\ \hline
+			\textbf{Decision Tree} & 0.0 & 0.0 \\
+			\textbf{Random Forest} & 0.0 & 0.0 \\
+			\textbf{Multilayer Perceptron} & 0.1302029 & 0.13073247 \\
+			\textbf{lightGBM} & 0.0 & 0.0 
+	\end{tabular}}
+\end{table}
+
+Como se muestra en la tabla los resultados son extremadamente bajos. Esto es seguramente debido a la gran cantidad de desbalanceo que tenemos en el conjunto de datos original, ya que hay nueve veces más datos de una clase que de la otra. Por destacar algo en este experimento decir que \textit{Multilayer Perceptron} ha sido el mejor clasificador haciendo uso de este dataset sin preprocesamiento.
+
+
+
+\subsection{experimento 2: RandomOversampling.}
+
+El segundo experimento consiste en utilizar el conjunto de datos obtenido al aplicar el algoritmo de \textit{RandomOversampling}. Con este experimento podemos ver el rendimiento de cada uno de los algoritmos con un conjunto de datos balanceado añadiendo datos sintéticos. Los valores de la métrica \textit{TNR x TPR} obtenidos son los siguientes:
+
+\begin{table}[H]
+	\centering
+		\resizebox{0.4\linewidth}{!}{%
+		\tabcolsep=2pt
+			\begin{tabular}{rrrr}
+			\multicolumn{1}{l}{} & \multicolumn{2}{c}{\textbf{RandomOversampling}} & \multicolumn{1}{l}{} \\
+			\textbf{Clasificador} & \multicolumn{1}{c}{\textbf{Test}} & \multicolumn{1}{c}{\textbf{Entrenamiento}} \\ \hline
+			\textbf{Decision Tree} & 0.58832459 & 0.59028476 \\
+			\textbf{Random Forest} & 0.58184404 & 0.58490655 \\
+			\textbf{Multilayer Perceptron} & 0.62789727 & 0.62918908 \\
+			\textbf{lightGBM} & 0.61302809 & 0.61721834 
+	\end{tabular}}
+\end{table}
+
+Como se muestra en la tabla los resultados son mucho mejores que en el experimento anterior. Esto es debido al balanceo obtenido por \textit{RandomOversampling}. En este experimento \textit{Multilayer Perceptron} ha sido el mejor clasificador, seguido de  \textit{lightGBM} con una diferencia entorno a 0.01.
+
+
+\subsection{Experimento 3: RandomOversampling y estandarización.}
+
+El tercer experimento ha hecho uso de \textit{RandomOversampling} despues de haber estandarizado el conjunto de datos original con el algoritmo \textit{StandardScaler}. Los valores de la métrica \textit{TNR x TPR} obtenidos son los siguientes:
+
+\begin{table}[H]
+	\centering
+		\resizebox{0.4\linewidth}{!}{%
+		\tabcolsep=2pt
+			\begin{tabular}{rrrr}
+			\multicolumn{1}{l}{} & \multicolumn{2}{c}{\textbf{ROS + estandarización }} & \multicolumn{1}{l}{} \\
+			\textbf{Clasificador} & \multicolumn{1}{c}{\textbf{Test}} & \multicolumn{1}{c}{\textbf{Entrenamiento}} \\ \hline
+			\textbf{Decision Tree} & 0.58887558 & 0.59068401 \\
+			\textbf{Random Forest} & 0.58323728 & 0.5866861 \\
+			\textbf{Multilayer Perceptron} & 0.62795574 & 0.62919676 \\
+			\textbf{lightGBM} & 0.61245392 & 0.61575347 
+	\end{tabular}}
+\end{table}
+
+Como se muestra en la tabla los todos resultados son algo mejores que en el experimento 2, excepto en el caso de \textit{lightGBM} cuyo resultado decrece un 0.001. El uso de \textit{StandardScaler}, aunque levemente, mejora los resultados de los algoritmos \textit{Decision Tree}, \textit{Random Forest}, \textit{Multilayer Perceptron}. En este experimento \textit{Multilayer Perceptron} ha sido el mejor clasificador, seguido de  \textit{lightGBM} con una diferencia entorno a 0.015. 
+
+\subsection{Experimento 4: RandomUndersampling.}
+
+El cuarto experimento consiste en utilizar el conjunto de datos obtenido al aplicar el algoritmo de \textit{RandomUndersampling}. Con este experimento podemos ver el rendimiento de cada uno de los algoritmos con un conjunto de datos balanceado mediante la eliminacion de datos pertenecientes a la clase mayoritaria, por lo que, en teoría, perdemos información. Los valores de la métrica \textit{TNR x TPR} obtenidos son los siguientes:
+
+
+\begin{table}[H]
+	\centering
+		\resizebox{0.4\linewidth}{!}{%
+		\tabcolsep=2pt
+			\begin{tabular}{rrrr}
+			\multicolumn{1}{l}{} & \multicolumn{2}{c}{\textbf{RandomUndersampling}} & \multicolumn{1}{l}{} \\
+			\textbf{Clasificador} & \multicolumn{1}{c}{\textbf{Test}} & \multicolumn{1}{c}{\textbf{Entrenamiento}} \\ \hline
+			\textbf{Decision Tree} & 0.58577062 & 0.58841401 \\
+			\textbf{Random Forest} & 0.57972965 & 0.58434386 \\
+			\textbf{Multilayer Perceptron} & 0.62816948 & 0.6309872 \\
+			\textbf{lightGBM} & 0.61240882 & 0.61760624 
+	\end{tabular}}
+\end{table}
+
+Como se muestra en la tabla los resultados son muy parecidos al experimento 3. El uso de \textit{RandomUndersampling} empeora los resultados de los algoritmos \textit{Decision Tree}, \textit{Random Forest}, \textit{lightGBM}. En este experimento \textit{Multilayer Perceptron} ha sido el mejor clasificador, seguido de  \textit{lightGBM} con una diferencia en torno a 0.015.
+
+
+\subsection{Experimento 5: RandomUndersampling y estandarización.}
+
+El quinto experimento hace uso de \textit{RandomUndersampling} despues de haber estandarizado el conjunto de datos original con el algoritmo \textit{StandardScaler}. Los valores de la métrica \textit{TNR x TPR} obtenidos son los siguientes:
+
+\begin{table}[H]
+	\centering
+		\resizebox{0.4\linewidth}{!}{%
+		\tabcolsep=2pt
+			\begin{tabular}{rrrr}
+			\multicolumn{1}{l}{} & \multicolumn{2}{c}{\textbf{RUS + estandarización}} & \multicolumn{1}{l}{} \\
+			\textbf{Clasificador} & \multicolumn{1}{c}{\textbf{Test}} & \multicolumn{1}{c}{\textbf{Entrenamiento}} \\ \hline
+			\textbf{Decision Tree} & 0.58676307 & .59095714 \\
+			\textbf{Random Forest} & 0.58366761 & 0.58805553 \\
+			\textbf{Multilayer Perceptron} & 0.62761485 & 0.62978137 \\
+			\textbf{lightGBM} & 0.61138488 & 0.61636626 
+	\end{tabular}}
+\end{table}
+
+Como se muestra en la tabla, en este experimento tenemos el caso de dos algoritmos de clasificación que mejoranrespecto al experimento 4, que hace uso unicamente de \textit{RandomUndersampling}, estos son: \textit{Decision Tree} y \textit{Random Forest}. Por otro lado tenemos otros dos que empeoran respecto al experimento 4, que hace uso unicamente de \textit{RandomUndersampling}: \textit{lightGBM} y \textit{Multilayer Perceptron}. La aplicación del algoritmo \textit{StandardScaler} parece que tiene diferentes efectos dependiendo del algoritmo utilizado, es decir, no mejora de manera general los resultados.\\
+
+Aunque empeora el resultado, \textit{Multilayer Perceptron} ha sido el mejor clasificador, seguido de  \textit{lightGBM} con una diferencia entre los dos en torno a 0.015.
+
+\subsection{Experimento 6: Estandarización y PCA.}
+
+En este experimento hemos utilizado el conjunto de datos obtenido al realizar \textit{PCA} y seleccionar las 5 mejores componentes. En este experimento se ha hecho también uso de la estandarización antes de realizar \textit{PCA}. Por lo que este conjunto de datos aunque estandarizado esta igual de desbalanceado que el conjunto de datos original. Los valores de la métrica \textit{TNR x TPR} obtenidos son los siguientes:
+
+
+\begin{table}[H]
+	\centering
+		\resizebox{0.4\linewidth}{!}{%
+		\tabcolsep=2pt
+			\begin{tabular}{rrrr}
+			\multicolumn{1}{l}{} & \multicolumn{2}{c}{\textbf{PCA}} & \multicolumn{1}{l}{} \\
+			\textbf{Clasificador} & \multicolumn{1}{c}{\textbf{Test}} & \multicolumn{1}{c}{\textbf{Entrenamiento}} \\ \hline
+			\textbf{Decision Tree} & 0.0245048 & 0.02576025 \\
+			\textbf{Random Forest} & 0.0 & 0.0 \\
+			\textbf{Multilayer Perceptron} & 0.13019318 & 0.13072257 \\
+			\textbf{lightGBM} & 0.0 & 0.0 
+	\end{tabular}}
+\end{table}
+
+Como se muestra en la tabla los resultados, aunque algo mejores que sin preprocesar, son muy bajos. Esto es seguramente debido a la gran cantidad de desbalanceo que tenemos en el conjunto de datos, ya que hay nueve veces más datos de una clase que de la otra. Por destacar algo en este experimento decir que \textit{Multilayer Perceptron} ha sido el mejor clasificador y obtiene un 0.00001 menos que en el caso de utilizar el dataset original sin preprocesar.
+
+
+\subsection{Experimento 7: Estandarización, PCA y RandomOversampling.}
+
+En este experimento hemos utilizado el conjunto de datos obtenido al realizar estandarización junto \textit{PCA} y seleccionar las 5 mejores componentes y despues se ha aplicado \textit{RandomOversampling} con el fin de balancear el conjunto de datos y obtener mejores resultados que utilizando unicamente \textit{PCA}. 
+
+\begin{table}[H]
+	\centering
+		\resizebox{0.4\linewidth}{!}{%
+		\tabcolsep=2pt
+			\begin{tabular}{rrrr}
+			\multicolumn{1}{l}{} & \multicolumn{2}{c}{\textbf{PCA y ROS}} & \multicolumn{1}{l}{} \\
+			\textbf{Clasificador} & \multicolumn{1}{c}{\textbf{Test}} & \multicolumn{1}{c}{\textbf{Entrenamiento}} \\ \hline
+			\textbf{Decision Tree} & 0.58850558 & 0.59060213 \\
+			\textbf{Random Forest} & 0.58206604 & 0.58546834 \\
+			\textbf{Multilayer Perceptron} & 0.62824781 & 0.63001623 \\
+			\textbf{lightGBM} & 0.61162188 & 0.61464305 
+	\end{tabular}}
+\end{table}
+
+En este experimento se ha consegido el mejor resultado de todos los experimentos por parte de \textit{Multilayer Perceptron}. Aunque en el caso de \textit{Multilayer Perceptron} si ha mejorado con respecto al resto de experimento, los otros tres algoritmos no han obtenido su mejor resultado. Esta claro que el balanceo del conjunto de datos es esencial para obtener buenos resultados y que juega un papel más importante que la estandarización y PCA. \textit{Multilayer Perceptron} ha sido el mejor clasificador.
+
+
+\subsection{Experimento 8: Estandarización, PCA y RandomUndersampling.}
+
+En este experimento hemos utilizado el conjunto de datos obtenido al realizar estandarización junto \textit{PCA} y seleccionar las 5 mejores componentes y despues se ha aplicado \textit{RandomUndersampling} con el fin de balancear el conjunto de datos y obtener mejores resultados que utilizando unicamente \textit{PCA}.
+\begin{table}[H]
+	\centering
+		\resizebox{0.4\linewidth}{!}{%
+		\tabcolsep=2pt
+			\begin{tabular}{rrrr}
+			\multicolumn{1}{l}{} & \multicolumn{2}{c}{\textbf{PCA y RUS}} & \multicolumn{1}{l}{} \\
+			\textbf{Clasificador} & \multicolumn{1}{c}{\textbf{Test}} & \multicolumn{1}{c}{\textbf{Entrenamiento}} \\ \hline
+			\textbf{Decision Tree} & 0.59134768 & 0.59407546 \\
+			\textbf{Random Forest} & 0.58576375 & 0.58909805 \\
+			\textbf{Multilayer Perceptron} & 0.62644402 & 0.62924400 \\
+			\textbf{lightGBM} & 0.61290875 & 0.61908352 
+	\end{tabular}}
+\end{table}
+
+En este experimento \textit{Decision Tree} y \textit{Random Forest} han consegido sus mejores resultados en test. Los otros tres algoritmos no han obtenido su mejor resultado. Esta claro que el balanceo del conjunto de datos es esencial para obtener buenos resultados y que \textit{RandomUndersampling} junto con la estandarización y \textit{PCA} obtiente resultados algo inferiores que mezclando \textit{RandomOversampling} con estandarización y \textit{PCA}. Esto puede ser debido a la perdida de información resultante de utilizar \textit{RandomUndersampling} para balancear. \textit{Multilayer Perceptron} ha sido el mejor clasificador.
+
+\section{Conclusiones.}
+
+En este trabajo se ha aprendido las ventajas de trabajar con un \textit{framework} como es \textit{Spark} en ambitos de \textit{Big Data}, ya que permite implementar algoritmos paralelos y distribuidos de una forma transparente al programador, permitiendo tener así una abstracción del \textit{hardware} donde se van a ejecutar los algoritmos. Esto es una gran ventaja, ya que el código usado en esta práctica se ha podido ejecutar tanto en mi máquina local como en el \textit{clúster} proporcionado por la universidad \\
+
+También me he enfrentado a uno de los grande problemas comentados en clase cuando nos enfrentamos a problemas donde debemos aplicar técnicas de preprocesamiento, y es que es díficil encontrar el preprocesamiento correcto a usar. Como hemos visto en teoría, no hay unos pasos estandarizados a seguir que garanticen mejorar el conjunto de datos original, por ello debemos probar distintas combinaciones y preprocesamientos para intentar encontrar la mejor combinación para nuestro problema en particular. En mi caso puedo decir que \textit{RandomOversampling} es el algoritmo que da mejores resultados de manera general. Al conbinarlo con estandarización y \textit{PCA} se ha obtenido el mejor resultado, ofrecido por \textit{Multilayer Perceptron}, con un 0.62824781 en test.
+
+
+
+\section{Bibliografía.}
+
+\begin{itemize}
+	\item Spark: \href{https://spark.apache.org/}{https://spark.apache.org/}
+	\item RandomOversampling y RandomUncersampling: Facilitados por la asignatura Big Data II.
+	\item PCA: \href{https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.ml.feature.PCA.html}{https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.ml.feature.PCA.html}
+	\item StandardScaler: \href{https://spark.apache.org/docs/latest/api/python/_modules/pyspark/ml/feature.html#StandardScaler}{https://spark.apache.org/docs/latest/api/python/_modules/pyspark/ml/feature.html#StandardScaler}
+	\item Multilayer Perceptron: \href{https://spark.apache.org/docs/latest/ml-classification-regression.html#multilayer-perceptron-classifier}{https://spark.apache.org/docs/latest/ml-classification-regression.html#multilayer-perceptron-classifier}
+	\item DecisionTreeClassifier: \href{https://spark.apache.org/docs/latest/ml-classification-regression.html#decision-tree-classifier}{https://spark.apache.org/docs/latest/ml-classification-regression.html#decision-tree-classifier}
+	\item RandomForestClassifier: \href{https://spark.apache.org/docs/latest/ml-classification-regression.html#random-forest-classifier}{https://spark.apache.org/docs/latest/ml-classification-regression.html#random-forest-classifier}
+	\item LightGBMClassifier: \href{https://github.com/Microsoft/LightGBM}{https://github.com/Microsoft/LightGBM}
+\end{itemize}
+
+
+\end{document}
